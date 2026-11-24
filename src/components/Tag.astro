@@ -1,0 +1,15 @@
+---
+interface Props {
+  tag: string;
+  href?: string;
+}
+const { tag, href } = Astro.props;
+const Element = href ? "a" : "span";
+---
+
+<Element
+  href={href}
+  class="font-mono-label inline-block border border-line px-2 py-0.5 text-xs text-ink-soft no-underline hover:border-signal hover:text-signal dark:border-line-dark dark:text-ink-soft-dark dark:hover:border-signal-dark dark:hover:text-signal-dark"
+>
+  {tag}
+</Element>

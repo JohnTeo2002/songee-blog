@@ -1,0 +1,75 @@
+---
+interface Heading {
+  depth: number;
+  slug: string;
+  text: string;
+}
+interface Props {
+  headings: Heading[];
+}
+const { headings } = Astro.props;
+// Only show h2/h3 — h1 is the article title itself.
+const items = headings.filter((h) => h.depth === 2 || h.depth === 3);
+---
+
+{
+  items.length > 0 && (
+    <nav
+      aria-label="Table of contents"
+      class="sticky top-8 hidden max-h-[calc(100vh-4rem)] overflow-y-auto xl:block"
+    >
+      <p class="font-mono-label mb-3 text-xs text-ink-soft dark:text-ink-soft-dark">
+        On this page
+      </p>
+      <ul class="space-y-2 border-l border-line text-sm dark:border-line-dark">
+        {items.map((h) => (
+          <li class={h.depth === 3 ? "pl-7" : "pl-4"}>
+            <a
+              href={`#${h.slug}`}
+              data-toc-link={h.slug}
+              class="toc-link block border-l-2 border-transparent py-0.5 -ml-px pl-3 text-ink-soft no-underline hover:text-ink dark:text-ink-soft-dark dark:hover:text-ink-dark"
+            >
+              {h.text}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  )
+}
+
+<script is:inline>
+  (function () {
+    var links = Array.from(document.querySelectorAll("[data-toc-link]"));
+    if (!links.length) return;
+
+    var headingEls = links
+      .map(function (l) {
+        return document.getElementById(l.getAttribute("data-toc-link"));
+      })
+      .filter(Boolean);
+
+    function setActive(id) {
+      links.forEach(function (l) {
+        var active = l.getAttribute("data-toc-link") === id;
+        l.classList.toggle("text-signal", active);
+        l.classList.toggle("dark:text-signal-dark", active);
+        l.classList.toggle("border-signal", active);
+        l.classList.toggle("dark:border-signal-dark", active);
+      });
+    }
+
+    var observer = new IntersectionObserver(
+      function (entries) {
+        entries.forEach(function (entry) {
+          if (entry.isIntersecting) setActive(entry.target.id);
+        });
+      },
+      { rootMargin: "-20% 0px -70% 0px" }
+    );
+
+    headingEls.forEach(function (el) {
+      observer.observe(el);
+    });
+  })();
+</script>

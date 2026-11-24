@@ -1,0 +1,77 @@
+---
+import BaseLayout from "@/layouts/BaseLayout.astro";
+
+interface Project {
+  name: string;
+  summary: string;
+  stack: string[];
+  blurb: string;
+}
+
+const projects: Project[] = [
+  {
+    name: "Enterprise Guardrailed Hybrid RAG Pipeline",
+    summary: "Hybrid dense + BM25 retrieval with input/output guardrails",
+    stack: ["Python", "LangSmith", "Ragas", "RRF"],
+    blurb:
+      "A retrieval-augmented generation pipeline built for environments where naive vector search silently fails: hybrid dense-vector and BM25 retrieval combined through Reciprocal Rank Fusion, input and output prompt-injection sanitization, role-aware context engineering, and an automated Ragas/LangSmith evaluation gate that blocks regressions before they ship.",
+  },
+  {
+    name: "Auditable Clinical Scheduling Engine",
+    summary: "J.P. Morgan Code for Good 2026",
+    stack: ["Python", "FastAPI", "SciPy", "PostgreSQL"],
+    blurb:
+      "A scheduling platform for clinical staff rosters that treats correctness as a hard requirement: deterministic hard-constraint filtering, Hungarian-algorithm bipartite optimization for assignment, server-side role-based access control, and an append-only audit log so every revision to a published schedule is attributable and reversible.",
+  },
+  {
+    name: "156.25 MHz FPGA NASDAQ ITCH 5.0 Market Data Decoder",
+    summary: "Sub-microsecond hardware packet parsing",
+    stack: ["SystemVerilog", "AXI4-Stream", "cocotb"],
+    blurb:
+      "A hardware network packet parser for NASDAQ's ITCH 5.0 market data feed that bypasses the OS kernel network stack entirely, decoding message types directly in fabric at 156.25 MHz over an AXI4-Stream interface to hit sub-microsecond latency. Verified with a cocotb testbench driving recorded market data against a bit-exact reference decoder.",
+  },
+  {
+    name: "Multimodal Synthetic Media Verification Pipeline",
+    summary: "Cross-modal classification with human-in-the-loop review",
+    stack: ["PyTorch", "Cross-modal attention", "Risk routing"],
+    blurb:
+      "A verification pipeline for synthetic media that pairs a cross-modal attention classifier with a recommendation-based risk-routing queue, so uncertain or high-stakes cases are escalated to human reviewers instead of being silently auto-resolved in either direction.",
+  },
+];
+---
+
+<BaseLayout
+  title="Projects"
+  description="Selected engineering systems and projects."
+>
+  <section class="mx-auto max-w-4xl px-6 py-14">
+    <h1 class="text-3xl font-semibold">Projects</h1>
+    <p class="mt-2 max-w-2xl text-ink-soft dark:text-ink-soft-dark">
+      A selection of systems I've designed and built, spanning applied AI,
+      backend infrastructure, and low-latency hardware.
+    </p>
+
+    <div class="mt-10 grid gap-6 sm:grid-cols-2">
+      {
+        projects.map((p) => (
+          <article class="flex flex-col border border-line p-6 dark:border-line-dark">
+            <h2 class="text-lg font-semibold leading-snug">{p.name}</h2>
+            <p class="font-mono-label mt-1 text-xs text-signal dark:text-signal-dark">
+              {p.summary}
+            </p>
+            <p class="mt-4 flex-1 text-sm leading-relaxed text-ink-soft dark:text-ink-soft-dark">
+              {p.blurb}
+            </p>
+            <div class="mt-5 flex flex-wrap gap-2">
+              {p.stack.map((s) => (
+                <span class="font-mono-label border border-line px-2 py-0.5 text-xs text-ink-soft dark:border-line-dark dark:text-ink-soft-dark">
+                  {s}
+                </span>
+              ))}
+            </div>
+          </article>
+        ))
+      }
+    </div>
+  </section>
+</BaseLayout>

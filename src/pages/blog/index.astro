@@ -1,0 +1,137 @@
+---
+import { getCollection } from "astro:content";
+import BaseLayout from "@/layouts/BaseLayout.astro";
+import PostCard from "@/components/PostCard.astro";
+import { BLOG_TAGS } from "@/consts";
+
+const posts = (await getCollection("blog", ({ data }) => !data.draft)).sort(
+  (a, b) => b.data.pubDate.getTime() - a.data.pubDate.getTime()
+);
+---
+
+<BaseLayout title="Blog" description="All engineering posts.">
+  <section class="mx-auto max-w-3xl px-6 py-14">
+    <h1 class="text-3xl font-semibold">Blog</h1>
+    <p class="mt-2 text-ink-soft dark:text-ink-soft-dark">
+      All posts, newest first. Filter by topic or search by title.
+    </p>
+
+    <div class="mt-8 flex flex-col gap-4">
+      <input
+        id="search-input"
+        type="search"
+        placeholder="Search posts…"
+        aria-label="Search posts by title or summary"
+        class="font-mono-label w-full border border-line bg-transparent px-4 py-2.5 text-sm placeholder:text-ink-soft focus:border-signal dark:border-line-dark dark:placeholder:text-ink-soft-dark dark:focus:border-signal-dark"
+      />
+
+      <div
+        id="tag-filter"
+        role="group"
+        aria-label="Filter posts by tag"
+        class="flex flex-wrap gap-2"
+      >
+        <button
+          type="button"
+          data-tag="All"
+          class="tag-filter-btn font-mono-label border border-ink bg-ink px-3 py-1 text-xs text-paper dark:border-ink-dark dark:bg-ink-dark dark:text-paper-dark"
+        >
+          All
+        </button>
+        {
+          BLOG_TAGS.map((tag) => (
+            <button
+              type="button"
+              data-tag={tag}
+              class="tag-filter-btn font-mono-label border border-line px-3 py-1 text-xs text-ink-soft hover:border-signal hover:text-signal dark:border-line-dark dark:text-ink-soft-dark dark:hover:border-signal-dark dark:hover:text-signal-dark"
+            >
+              {tag}
+            </button>
+          ))
+        }
+      </div>
+    </div>
+
+    <div id="post-list" class="mt-10">
+      {
+        posts.map((post) => (
+          <PostCard
+            slug={post.id}
+            title={post.data.title}
+            description={post.data.description}
+            pubDate={post.data.pubDate}
+            tags={post.data.tags}
+            body={post.body ?? ""}
+          />
+        ))
+      }
+    </div>
+
+    <p
+      id="no-results"
+      class="hidden py-10 text-center text-ink-soft dark:text-ink-soft-dark"
+    >
+      No posts match your search.
+    </p>
+  </section>
+</BaseLayout>
+
+<script is:inline>
+  (function () {
+    var searchInput = document.getElementById("search-input");
+    var tagButtons = Array.from(document.querySelectorAll(".tag-filter-btn"));
+    var cards = Array.from(document.querySelectorAll(".post-card"));
+    var noResults = document.getElementById("no-results");
+
+    var activeTag = new URLSearchParams(location.search).get("tag") || "All";
+
+    function setActiveButton() {
+      tagButtons.forEach(function (btn) {
+        var isActive = btn.getAttribute("data-tag") === activeTag;
+        btn.classList.toggle("bg-ink", isActive);
+        btn.classList.toggle("text-paper", isActive);
+        btn.classList.toggle("border-ink", isActive);
+        btn.classList.toggle("dark:bg-ink-dark", isActive);
+        btn.classList.toggle("dark:text-paper-dark", isActive);
+        btn.classList.toggle("dark:border-ink-dark", isActive);
+        btn.classList.toggle("text-ink-soft", !isActive);
+        btn.classList.toggle("border-line", !isActive);
+        btn.classList.toggle("dark:text-ink-soft-dark", !isActive);
+        btn.classList.toggle("dark:border-line-dark", !isActive);
+      });
+    }
+
+    function applyFilters() {
+      var query = (searchInput.value || "").trim().toLowerCase();
+      var visibleCount = 0;
+
+      cards.forEach(function (card) {
+        var tags = (card.getAttribute("data-tags") || "").split(",");
+        var matchesTag = activeTag === "All" || tags.includes(activeTag);
+        var matchesQuery =
+          !query ||
+          card.getAttribute("data-title").includes(query) ||
+          card.getAttribute("data-summary").includes(query);
+
+        var visible = matchesTag && matchesQuery;
+        card.classList.toggle("hidden", !visible);
+        if (visible) visibleCount++;
+      });
+
+      noResults.classList.toggle("hidden", visibleCount !== 0);
+    }
+
+    tagButtons.forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        activeTag = btn.getAttribute("data-tag");
+        setActiveButton();
+        applyFilters();
+      });
+    });
+
+    searchInput.addEventListener("input", applyFilters);
+
+    setActiveButton();
+    applyFilters();
+  })();
+</script>

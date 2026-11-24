@@ -1,0 +1,163 @@
+---
+import BaseLayout from "@/layouts/BaseLayout.astro";
+import Tag from "@/components/Tag.astro";
+import TableOfContents from "@/components/TableOfContents.astro";
+import Mermaid from "@/components/Mermaid.astro";
+import { formatDate, toISODate } from "@/lib/format-date";
+import { AUTHOR_NAME, SITE_URL } from "@/consts";
+
+interface Heading {
+  depth: number;
+  slug: string;
+  text: string;
+}
+
+interface NavPost {
+  slug: string;
+  title: string;
+}
+
+interface Props {
+  title: string;
+  description: string;
+  pubDate: Date;
+  updatedDate?: Date;
+  tags: string[];
+  readingTime: string;
+  canonicalUrl?: string;
+  headings: Heading[];
+  slug: string;
+  prevPost?: NavPost;
+  nextPost?: NavPost;
+  hasMermaid?: boolean;
+}
+
+const {
+  title,
+  description,
+  pubDate,
+  updatedDate,
+  tags,
+  readingTime,
+  canonicalUrl,
+  headings,
+  slug,
+  prevPost,
+  nextPost,
+  hasMermaid = false,
+} = Astro.props;
+
+const pageUrl = new URL(`/blog/${slug}`, SITE_URL).toString();
+
+const structuredData = {
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  headline: title,
+  description,
+  datePublished: pubDate.toISOString(),
+  ...(updatedDate ? { dateModified: updatedDate.toISOString() } : {}),
+  author: {
+    "@type": "Person",
+    name: AUTHOR_NAME,
+  },
+  mainEntityOfPage: {
+    "@type": "WebPage",
+    "@id": canonicalUrl ?? pageUrl,
+  },
+  keywords: tags.join(", "),
+};
+---
+
+<BaseLayout
+  title={title}
+  description={description}
+  canonicalUrl={canonicalUrl}
+  ogType="article"
+  structuredData={structuredData}
+>
+  <div class="mx-auto max-w-5xl px-6 py-14">
+    <div class="xl:grid xl:grid-cols-[1fr_14rem] xl:gap-12">
+      <article class="prose-article prose">
+        <header class="not-prose mb-10">
+          <div class="mb-4 flex flex-wrap gap-2">
+            {tags.map((tag) => <Tag tag={tag} href={`/blog?tag=${encodeURIComponent(tag)}`} />)}
+          </div>
+          <h1 class="text-3xl font-semibold leading-tight sm:text-4xl">
+            {title}
+          </h1>
+          <div
+            class="font-mono-label mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-ink-soft dark:text-ink-soft-dark"
+          >
+            <time datetime={toISODate(pubDate)}>{formatDate(pubDate)}</time>
+            {
+              updatedDate && (
+                <>
+                  <span aria-hidden="true">/</span>
+                  <span>Updated {formatDate(updatedDate)}</span>
+                </>
+              )
+            }
+            <span aria-hidden="true">/</span>
+            <span>{readingTime}</span>
+          </div>
+        </header>
+
+        <slot />
+
+        <footer class="not-prose mt-16 border-t border-line pt-8 dark:border-line-dark">
+          <nav
+            aria-label="Post navigation"
+            class="flex flex-col gap-6 sm:flex-row sm:justify-between"
+          >
+            <div>
+              {
+                prevPost && (
+                  <a
+                    href={`/blog/${prevPost.slug}`}
+                    class="group block no-underline"
+                  >
+                    <span class="font-mono-label text-xs text-ink-soft dark:text-ink-soft-dark">
+                      ← Previous
+                    </span>
+                    <span class="mt-1 block text-sm font-medium group-hover:text-signal dark:group-hover:text-signal-dark">
+                      {prevPost.title}
+                    </span>
+                  </a>
+                )
+              }
+            </div>
+            <div class="sm:text-right">
+              {
+                nextPost && (
+                  <a
+                    href={`/blog/${nextPost.slug}`}
+                    class="group block no-underline"
+                  >
+                    <span class="font-mono-label text-xs text-ink-soft dark:text-ink-soft-dark">
+                      Next →
+                    </span>
+                    <span class="mt-1 block text-sm font-medium group-hover:text-signal dark:group-hover:text-signal-dark">
+                      {nextPost.title}
+                    </span>
+                  </a>
+                )
+              }
+            </div>
+          </nav>
+
+          <p class="font-mono-label mt-8 text-xs text-ink-soft dark:text-ink-soft-dark">
+            <a href="/rss.xml" class="hover:text-signal dark:hover:text-signal-dark"
+              >Subscribe via RSS</a
+            >
+          </p>
+        </footer>
+      </article>
+
+      <aside class="hidden xl:block">
+        <TableOfContents headings={headings} />
+      </aside>
+    </div>
+  </div>
+
+  {hasMermaid && <Mermaid />}
+</BaseLayout>

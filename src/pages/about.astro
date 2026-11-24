@@ -1,0 +1,50 @@
+---
+import BaseLayout from "@/layouts/BaseLayout.astro";
+import { AUTHOR_NAME, SOCIAL_LINKS } from "@/consts";
+---
+
+<BaseLayout title="About" description={`About ${AUTHOR_NAME} and this site.`}>
+  <section class="mx-auto max-w-3xl px-6 py-14">
+    <h1 class="text-3xl font-semibold">About</h1>
+
+    <div class="prose-article prose mt-8">
+      <p>
+        I'm {AUTHOR_NAME}, an Electrical Engineering &amp; Computing double
+        degree student at the National University of Singapore (Class of
+        '27). I work across applied AI and backend systems, with a
+        particular interest in the parts of each that are hardest to get
+        right: retrieval and evaluation for AI systems that have to be
+        trusted, and the low-latency, highly auditable infrastructure that
+        sits underneath them.
+      </p>
+      <p>
+        This blog is where I write up the engineering problems I run into —
+        failure modes in retrieval pipelines, constraint-based scheduling,
+        hardware packet parsing, and whatever else forces me to actually
+        understand a system rather than just use it. Most posts include
+        runnable code and the trade-offs I made along the way, not just the
+        parts that worked.
+      </p>
+
+      <h2>Colophon</h2>
+      <p>
+        This site is built with <a href="https://astro.build" target="_blank" rel="noopener noreferrer">Astro</a>,
+        styled with Tailwind CSS, and written in MDX. Code blocks are
+        rendered with <a href="https://expressive-code.com/" target="_blank" rel="noopener noreferrer">Expressive Code</a>,
+        diagrams with <a href="https://mermaid.js.org/" target="_blank" rel="noopener noreferrer">Mermaid</a>,
+        and equations with KaTeX. The whole thing ships as static HTML with
+        no client-side framework runtime, deployable to Cloudflare Pages or
+        Vercel with zero configuration.
+      </p>
+
+      <h2>Get in touch</h2>
+      <p>
+        The fastest way to reach me is{" "}
+        <a href={`mailto:${SOCIAL_LINKS.email}`}>email</a>. I'm also on{" "}
+        <a href={SOCIAL_LINKS.github} target="_blank" rel="noopener noreferrer">GitHub</a>{" "}
+        and{" "}
+        <a href={SOCIAL_LINKS.linkedin} target="_blank" rel="noopener noreferrer">LinkedIn</a>.
+      </p>
+    </div>
+  </section>
+</BaseLayout>

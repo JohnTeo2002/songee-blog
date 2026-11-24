@@ -1,0 +1,47 @@
+---
+import { getCollection, render } from "astro:content";
+import ArticleLayout from "@/layouts/ArticleLayout.astro";
+import { estimateReadingTime } from "@/lib/reading-time";
+
+export async function getStaticPaths() {
+  const posts = await getCollection("blog", ({ data }) => !data.draft);
+  const sorted = [...posts].sort(
+    (a, b) => a.data.pubDate.getTime() - b.data.pubDate.getTime()
+  );
+
+  return sorted.map((post, index) => ({
+    params: { slug: post.id },
+    props: {
+      post,
+      prevPost: sorted[index - 1]
+        ? { slug: sorted[index - 1].id, title: sorted[index - 1].data.title }
+        : undefined,
+      nextPost: sorted[index + 1]
+        ? { slug: sorted[index + 1].id, title: sorted[index + 1].data.title }
+        : undefined,
+    },
+  }));
+}
+
+const { post, prevPost, nextPost } = Astro.props;
+const { Content, headings } = await render(post);
+const readingTime = estimateReadingTime(post.body ?? "");
+const hasMermaid = (post.body ?? "").includes("```mermaid");
+---
+
+<ArticleLayout
+  title={post.data.title}
+  description={post.data.description}
+  pubDate={post.data.pubDate}
+  updatedDate={post.data.updatedDate}
+  tags={post.data.tags}
+  readingTime={readingTime}
+  canonicalUrl={post.data.canonicalUrl}
+  headings={headings}
+  slug={post.id}
+  prevPost={prevPost}
+  nextPost={nextPost}
+  hasMermaid={hasMermaid}
+>
+  <Content />
+</ArticleLayout>

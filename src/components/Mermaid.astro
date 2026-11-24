@@ -1,0 +1,72 @@
+---
+// Finds ```mermaid code fences (rendered by astro-expressive-code as a plain
+// <pre data-language="mermaid">) and replaces them with rendered, responsive
+// SVG. Re-renders cleanly when the site's dark/light theme toggles, because
+// Mermaid themes are baked in at render time rather than CSS-switchable.
+---
+
+<script>
+  import mermaid from "mermaid";
+
+  type Source = { wrapper: HTMLElement; code: string };
+  const sources: Source[] = [];
+
+  function currentTheme(): "dark" | "default" {
+    return document.documentElement.getAttribute("data-theme") === "dark"
+      ? "dark"
+      : "default";
+  }
+
+  function initMermaid() {
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: currentTheme(),
+      securityLevel: "strict",
+      fontFamily: "JetBrains Mono, ui-monospace, monospace",
+    });
+  }
+
+  async function renderInto(wrapper: HTMLElement, code: string, id: string) {
+    try {
+      const { svg } = await mermaid.render(id, code);
+      wrapper.innerHTML = svg;
+    } catch (err) {
+      wrapper.textContent = "Diagram failed to render.";
+      console.error(err);
+    }
+  }
+
+  async function renderAll() {
+    initMermaid();
+    let i = 0;
+    for (const { wrapper, code } of sources) {
+      await renderInto(wrapper, code, `mermaid-diagram-${i++}-${Date.now()}`);
+    }
+  }
+
+  async function discoverAndRender() {
+    sources.length = 0;
+    const blocks = document.querySelectorAll<HTMLElement>(
+      'pre[data-language="mermaid"]'
+    );
+    if (!blocks.length) return;
+
+    blocks.forEach((block) => {
+      const wrapper = document.createElement("div");
+      wrapper.className = "mermaid-wrap";
+      block.replaceWith(wrapper);
+      sources.push({ wrapper, code: block.innerText });
+    });
+
+    await renderAll();
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", discoverAndRender);
+  } else {
+    discoverAndRender();
+  }
+  // Forward-compatible if View Transitions are ever enabled.
+  document.addEventListener("astro:page-load", discoverAndRender);
+  window.addEventListener("theme-change", renderAll);
+</script>
