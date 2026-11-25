@@ -12,7 +12,7 @@ export const AUTHOR_NAME = "Teo So Ngee";
 export const SITE_TITLE = "Teo So Ngee — Engineering & Systems";
 
 export const SITE_DESCRIPTION =
-  "Electrical Engineering & Computing at NUS ('27). Writing about Applied AI, backend systems, distributed architectures, and low-latency engineering.";
+  "AI Software Engineer. EE & CS @ NUS. Exploring Applied AI, Agentic Systems, Software Engineering, and IoT.";
 
 export const TAGLINE = SITE_DESCRIPTION;
 
