@@ -1,0 +1,264 @@
+---
+import BaseLayout from "@/layouts/BaseLayout.astro";
+import { BLOG_TAGS } from "@/consts";
+
+export const prerender = true;
+---
+
+<BaseLayout title="Write a post">
+  <section class="mx-auto max-w-3xl px-6 py-12 sm:py-16">
+    <p class="font-mono-label text-sm text-signal dark:text-signal-dark">
+      Author dashboard
+    </p>
+    <h1 class="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">
+      Write a post
+    </h1>
+    <p class="mt-3 text-ink-soft dark:text-ink-soft-dark">
+      Write in MDX, then publish directly to the blog.
+    </p>
+
+    <p
+      id="auth-error"
+      class="mt-6 hidden border border-line p-4 text-sm text-ink-soft dark:border-line-dark dark:text-ink-soft-dark"
+      role="alert"
+    ></p>
+    <div id="sign-in" class="mt-8 hidden">
+      <p class="text-ink-soft dark:text-ink-soft-dark">
+        Sign in with the GitHub account authorized to publish posts.
+      </p>
+      <a
+        href="/api/auth/login"
+        class="mt-4 inline-block border border-ink bg-ink px-5 py-2.5 font-mono-label text-sm text-paper no-underline hover:bg-ink-soft dark:border-ink-dark dark:bg-ink-dark dark:text-paper-dark dark:hover:bg-ink-soft-dark"
+      >
+        Sign in with GitHub
+      </a>
+    </div>
+
+    <form id="post-form" class="mt-8 hidden space-y-6">
+      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-line pb-4 dark:border-line-dark">
+        <p id="signed-in-as" class="font-mono-label text-xs text-ink-soft dark:text-ink-soft-dark"></p>
+        <button
+          id="sign-out"
+          type="button"
+          class="font-mono-label text-xs text-signal hover:underline dark:text-signal-dark"
+        >
+          Sign out
+        </button>
+      </div>
+
+      <label class="block">
+        <span class="font-mono-label text-sm">Title</span>
+        <input
+          name="title"
+          required
+          maxlength="160"
+          class="mt-2 block w-full border border-line bg-paper px-3 py-2 text-ink outline-none focus:border-signal dark:border-line-dark dark:bg-paper-dark dark:text-ink-dark dark:focus:border-signal-dark"
+          placeholder="A clear, descriptive title"
+        />
+      </label>
+
+      <label class="block">
+        <span class="font-mono-label text-sm">Description</span>
+        <textarea
+          name="description"
+          required
+          maxlength="320"
+          rows="2"
+          class="mt-2 block w-full border border-line bg-paper px-3 py-2 text-ink outline-none focus:border-signal dark:border-line-dark dark:bg-paper-dark dark:text-ink-dark dark:focus:border-signal-dark"
+          placeholder="A short summary for the blog index and search engines"
+        ></textarea>
+      </label>
+
+      <div class="grid gap-6 sm:grid-cols-2">
+        <label class="block">
+          <span class="font-mono-label text-sm">Publish date</span>
+          <input
+            name="pubDate"
+            type="date"
+            required
+            class="mt-2 block w-full border border-line bg-paper px-3 py-2 text-ink outline-none focus:border-signal dark:border-line-dark dark:bg-paper-dark dark:text-ink-dark dark:focus:border-signal-dark"
+          />
+        </label>
+        <fieldset>
+          <legend class="font-mono-label text-sm">Tags</legend>
+          <div class="mt-2 flex flex-wrap gap-x-4 gap-y-2">
+            {
+              BLOG_TAGS.map((tag) => (
+                <label class="flex items-center gap-2 text-sm text-ink-soft dark:text-ink-soft-dark">
+                  <input
+                    type="checkbox"
+                    name="tags"
+                    value={tag}
+                    class="accent-signal"
+                  />
+                  {tag}
+                </label>
+              ))
+            }
+          </div>
+        </fieldset>
+      </div>
+
+      <label class="block">
+        <span class="font-mono-label text-sm">Post body</span>
+        <span class="mt-1 block text-sm text-ink-soft dark:text-ink-soft-dark">
+          Markdown and MDX are supported. Frontmatter is generated for you.
+        </span>
+        <textarea
+          name="body"
+          required
+          rows="20"
+          spellcheck="true"
+          class="mt-2 block w-full resize-y border border-line bg-paper px-3 py-3 font-mono-label text-sm leading-relaxed text-ink outline-none focus:border-signal dark:border-line-dark dark:bg-paper-dark dark:text-ink-dark dark:focus:border-signal-dark"
+          placeholder={"## Start writing\n\nYour post content goes here. You can use Markdown, code fences, math, and MDX."}
+        ></textarea>
+      </label>
+
+      <div class="flex flex-wrap items-center gap-4">
+        <button
+          id="publish-button"
+          type="submit"
+          class="border border-ink bg-ink px-5 py-2.5 font-mono-label text-sm text-paper hover:bg-ink-soft disabled:cursor-wait disabled:opacity-60 dark:border-ink-dark dark:bg-ink-dark dark:text-paper-dark dark:hover:bg-ink-soft-dark"
+        >
+          Publish post
+        </button>
+        <p id="publish-status" class="text-sm text-ink-soft dark:text-ink-soft-dark" aria-live="polite"></p>
+      </div>
+    </form>
+  </section>
+
+  <script>
+    function requiredElement<T extends Element>(selector: string): T {
+      const element = document.querySelector<T>(selector);
+      if (!element) throw new Error(`Missing post editor element: ${selector}`);
+      return element;
+    }
+
+    const signIn = requiredElement<HTMLDivElement>("#sign-in");
+    const form = requiredElement<HTMLFormElement>("#post-form");
+    const authError = requiredElement<HTMLParagraphElement>("#auth-error");
+    const signedInAs =
+      requiredElement<HTMLParagraphElement>("#signed-in-as");
+    const status =
+      requiredElement<HTMLParagraphElement>("#publish-status");
+    const publishButton =
+      requiredElement<HTMLButtonElement>("#publish-button");
+    const dateInput = requiredElement<HTMLInputElement>(
+      'input[name="pubDate"]'
+    );
+
+    const authErrors: Record<string, string> = {
+      "not-configured":
+        "Publishing is not configured yet. Add the required Vercel environment variables first.",
+      "sign-in-denied": "GitHub sign-in was cancelled.",
+      "sign-in-failed": "GitHub sign-in failed. Please try again.",
+      "not-authorized":
+        "That GitHub account is not authorized to publish posts.",
+    };
+    const errorKey = new URLSearchParams(window.location.search).get("error");
+    if (errorKey && authErrors[errorKey]) {
+      authError.textContent = authErrors[errorKey];
+      authError.classList.remove("hidden");
+    }
+
+    const today = new Date();
+    today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
+    dateInput.value = today.toISOString().slice(0, 10);
+
+    async function initialize() {
+      const response = await fetch("/api/auth/session");
+      const result = (await response.json()) as {
+        configured: boolean;
+        authenticated: boolean;
+        login?: string;
+      };
+
+      if (!result.configured) {
+        authError.textContent =
+          "Publishing is not configured yet. Add the required Vercel environment variables first.";
+        authError.classList.remove("hidden");
+        return;
+      }
+
+      if (result.authenticated) {
+        signedInAs.textContent = result.login
+          ? `Signed in as ${result.login}`
+          : "Signed in";
+        form.classList.remove("hidden");
+      } else {
+        signIn.classList.remove("hidden");
+      }
+    }
+
+    initialize().catch(() => {
+      authError.textContent =
+        "Could not check your sign-in status. Please reload and try again.";
+      authError.classList.remove("hidden");
+    });
+
+    document.querySelector<HTMLButtonElement>("#sign-out")?.addEventListener(
+      "click",
+      async () => {
+        try {
+          const response = await fetch("/api/auth/logout", { method: "POST" });
+          if (!response.ok) {
+            status.textContent = "Could not sign out. Please try again.";
+            return;
+          }
+          window.location.reload();
+        } catch {
+          status.textContent = "Could not sign out. Please try again.";
+        }
+      }
+    );
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      publishButton.disabled = true;
+      publishButton.textContent = "Publishing...";
+      status.textContent = "";
+
+      const data = new FormData(form);
+      const tags = data.getAll("tags").map(String);
+      try {
+        const response = await fetch("/api/posts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: data.get("title"),
+            description: data.get("description"),
+            pubDate: data.get("pubDate"),
+            tags,
+            body: data.get("body"),
+          }),
+        });
+        const result = (await response.json()) as {
+          error?: string;
+          path?: string;
+        };
+
+        if (!response.ok || !result.path) {
+          status.textContent = result.error || "Post could not be published.";
+          return;
+        }
+
+        status.textContent =
+          "Committed to GitHub. Vercel will publish it after the deployment finishes. ";
+        const link = document.createElement("a");
+        link.href = result.path;
+        link.textContent = "View post";
+        link.className =
+          "text-signal underline dark:text-signal-dark";
+        status.append(link);
+        form.reset();
+        dateInput.value = today.toISOString().slice(0, 10);
+      } catch {
+        status.textContent =
+          "Publishing failed due to a connection error. Please try again.";
+      } finally {
+        publishButton.disabled = false;
+        publishButton.textContent = "Publish post";
+      }
+    });
+  </script>
+</BaseLayout>
