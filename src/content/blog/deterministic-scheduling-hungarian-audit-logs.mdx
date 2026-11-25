@@ -1,235 +1,154 @@
 ---
-title: "Designing Safe Scheduling Engines: Hard-Constraint Filtering, the Hungarian Algorithm, and Append-Only Audit Logs"
-description: "How to build a staff-scheduling optimizer that operators can actually trust — deterministic eligibility rules, optimal assignment, and an immutable audit trail."
-pubDate: 2026-11-03
-tags: ["Backend & Systems", "Algorithms"]
+title: "Greedy Assignment Is Not Matching"
+description: "A deterministic one-to-one matcher avoids stranding eligible work when sessions compete for a scarce qualified worker. In a synthetic two-session test, it covers both sessions where the greedy choice covers one."
+pubDate: "2026-11-25"
+tags: ["Applied AI", "Backend & Systems"]
 draft: false
 ---
 
-Scheduling software has an unusual failure mode compared to most backend systems: when it's wrong, it doesn't crash — it produces a schedule that looks completely plausible and is quietly incorrect. A clinician assigned to a session they're not qualified for, or a published schedule silently overwritten after a supervisor already approved it, doesn't throw an exception. It just happens, and someone finds out when it's too late to fix cleanly.
+## The failure mode
 
-This post covers the design of a scheduling engine built around a simple premise: optimization should be the *last* step, not the first, and anything the system isn't certain about should stop and ask a human rather than guess. The examples here use a synthetic clinical-scheduling scenario — no real patient, staff, or organizational data.
+Two overlapping jobs need coverage. Worker 10 is qualified for both; worker 20 can take only the first. A greedy pass gives worker 10 to the first job, then discovers that the second has nobody left. The schedule shows one uncovered job despite a valid assignment: give the first job to worker 20 and the second to worker 10.
 
-## Why silent auto-overwrite breaks trust
+This is not a tie-breaking problem. Changing which job is considered first changes which job is left uncovered; it does not make the decision globally sound. Sorting by urgency or by the first job’s highest-ranked worker still commits locally before accounting for the other jobs competing for that worker.
 
-The tempting naive design is: staff member reports an absence, system immediately recomputes an optimal schedule, publishes it. This fails in practice for one specific reason — a published schedule is a commitment other systems and people have already built on. Patients have been told their appointment time. A supervisor approved the version currently live. If the system silently regenerates and republishes without surfacing *what changed and why*, it erodes the one thing that makes an automated scheduler usable at all: operators trusting that what they see is what's actually happening.
+Here is the naive policy in executable form:
 
-The same applies to missing data. If a staff member's certification record is incomplete, the wrong failure mode is to assume they're ineligible (they might lose shifts they're actually qualified for) or assume they're eligible (a compliance risk). The correct behavior is a third state: `REVIEW` — surface it to a human, don't guess either direction.
+```python
+def greedy(jobs: tuple[str, ...],
+           eligible: dict[str, tuple[int, ...]]) -> dict[str, int | None]:
+    used: set[int] = set()
+    result: dict[str, int | None] = {}
+    for job in jobs:
+        worker = next((w for w in eligible[job] if w not in used), None)
+        result[job] = worker
+        if worker is not None:
+            used.add(worker)
+    return result
 
-## State machine
-
-```mermaid
-stateDiagram-v2
-    [*] --> AbsenceReported
-    AbsenceReported --> AffectedSessionFlagged
-    AffectedSessionFlagged --> HardConstraintFilter
-
-    state HardConstraintFilter {
-        [*] --> Evaluating
-        Evaluating --> Pass
-        Evaluating --> Fail
-        Evaluating --> Review
-    }
-
-    HardConstraintFilter --> HungarianSolver: Pass
-    HardConstraintFilter --> DraftRevision: Fail
-    HardConstraintFilter --> DraftRevision: Review
-
-    HungarianSolver --> DraftRevision
-    DraftRevision --> SupervisorApproval
-    SupervisorApproval --> ImmutableVersion
-    ImmutableVersion --> AuditEvent
-    AuditEvent --> [*]
+jobs = ("A", "B")
+eligible = {"A": (10, 20), "B": (10,)}
+picked = greedy(jobs, eligible)
+assert picked == {"A": 10, "B": None}
 ```
 
-Every absence report triggers a flag on the sessions it affects, which then runs through a hard-constraint filter before anything resembling optimization happens. The solver only ever sees candidates that already passed deterministic eligibility — it never has the authority to override a hard rule for the sake of a better-optimized schedule.
+The order in `eligible["A"]` encodes preference: worker 10 is the locally best choice. But the job-worker graph matters more than that local ranking. For job B, worker 10 is the only edge. Taking it away from B has a cost that a per-job greedy loop cannot see.
 
-## Deterministic PASS / FAIL / REVIEW eligibility rules
+The fix is not to weaken qualifications or let a sufficiently high score excuse a conflict. First determine which edges are permitted. Then choose a set of non-conflicting edges across the whole overlap group.
 
-Eligibility is evaluated by an explicit, ordered set of checks — not a single boolean, because the *reason* a candidate fails matters for the audit trail and for the supervisor reviewing the draft.
+## System architecture
+
+The scheduler separates data loading from decision logic. A loader builds plain typed records; pure functions identify affected jobs and evaluate worker-job pairs. The matcher sees only candidates that passed every hard rule and do not require human review.
+
+```mermaid
+flowchart TD
+    A[Schedule and availability records] --> B[Typed planning context]
+    B --> C[Find affected sessions]
+    C --> D[Evaluate every hard rule]
+    D -->|FAIL| E[Explain exclusion]
+    D -->|REVIEW| F[Human resolution; never auto-assign]
+    D -->|PASS| G[Rank permitted candidates]
+    G --> H[Group overlapping sessions]
+    H --> I[One-to-one maximum-value matching]
+    I -->|Matched| J[Update in-memory draft assignments]
+    I -->|Unmatched| K[Mark for manual resolution]
+    J --> L[Caller persists results]
+    K --> L
+```
+
+Availability, active status, existing overlaps, and job-specific qualifications determine whether an edge exists. Preference ranking happens only after that boundary. Missing mandatory data is represented as `REVIEW`: it can remain visible for a person to resolve, but it does not become an automatic assignment.
+
+The matcher operates on one group of mutually overlapping sessions at a time. Non-overlapping sessions can reuse a worker, so combining them into one global assignment problem would impose a false constraint. The result is a mapping from assignment identifiers to a selected candidate or `None`; persistence stays with the caller, outside the pure matching routine.
+
+## Core implementation
+
+The guardrail is small: a candidate may be eligible for consideration while still requiring review, but automatic assignment accepts only verified candidates. The matcher cannot recover an edge that the hard-rule stage excluded.
 
 ```python
 from dataclasses import dataclass
-from enum import Enum, auto
+from typing import Literal
 
+Outcome = Literal["PASS", "FAIL", "REVIEW"]
 
-class Eligibility(Enum):
-    PASS = auto()
-    FAIL = auto()
-    REVIEW = auto()
+@dataclass(frozen=True)
+class Candidate:
+    worker_id: int
+    outcomes: tuple[Outcome, ...]
+    tier: int
+    score: float
 
+def eligible(candidate: Candidate) -> bool:
+    return all(outcome != "FAIL" for outcome in candidate.outcomes)
 
-@dataclass
-class EligibilityResult:
-    status: Eligibility
-    reason: str
-
-
-def evaluate_eligibility(staff_member, session) -> EligibilityResult:
-    """Ordered, deterministic eligibility checks.
-
-    Order matters: a REVIEW case (missing data) is checked before any FAIL
-    that would otherwise require data we don't actually have yet.
-    """
-    if staff_member.certification_on_file is None:
-        return EligibilityResult(
-            Eligibility.REVIEW,
-            "certification record missing — cannot confirm eligibility",
-        )
-
-    if session.required_certification not in staff_member.certifications:
-        return EligibilityResult(
-            Eligibility.FAIL,
-            f"missing required certification: {session.required_certification}",
-        )
-
-    if staff_member.has_conflicting_session(session.time_window):
-        return EligibilityResult(
-            Eligibility.FAIL, "time conflict with an existing assignment"
-        )
-
-    if staff_member.hours_this_week + session.duration_hours > staff_member.max_weekly_hours:
-        return EligibilityResult(
-            Eligibility.REVIEW,
-            "assignment would exceed weekly hour cap — needs override approval",
-        )
-
-    return EligibilityResult(Eligibility.PASS, "eligible")
-
-
-def filter_candidates(staff_pool, session) -> tuple[list, list[EligibilityResult]]:
-    """Returns (eligible_staff, all_results) — all_results feeds the audit log
-    even for candidates who didn't pass, so a supervisor can see why."""
-    eligible = []
-    results = []
-
-    for staff_member in staff_pool:
-        result = evaluate_eligibility(staff_member, session)
-        results.append(result)
-        if result.status is Eligibility.PASS:
-            eligible.append(staff_member)
-
-    return eligible, results
-```
-
-Only candidates with `PASS` ever reach the optimizer. `REVIEW` results stop the pipeline for that session and surface in the draft revision as an explicit flag rather than being silently dropped or silently included.
-
-## Cost-matrix formulation for optimal assignment
-
-Once we have a pool of eligible candidates for each affected session, assignment becomes a classic bipartite matching problem: minimize total cost (or equivalently, maximize preference/fit) across staff-to-session pairings, subject to each staff member and each session being used at most once. `scipy.optimize.linear_sum_assignment` implements the Hungarian algorithm, solving this optimally in $O(N^3)$ time for an $N \times N$ cost matrix.
-
-```python
-import numpy as np
-from scipy.optimize import linear_sum_assignment
-
-
-def build_cost_matrix(eligible_staff, open_sessions) -> np.ndarray:
-    """Lower cost = better fit. We penalize (not forbid — ineligibility
-    already happened upstream) overtime proximity and preference mismatch."""
-    n_staff = len(eligible_staff)
-    n_sessions = len(open_sessions)
-    size = max(n_staff, n_sessions)
-
-    # Pad with a high-cost dummy so scipy's square-matrix requirement
-    # doesn't force a real assignment where none should exist.
-    DUMMY_COST = 1_000.0
-    cost_matrix = np.full((size, size), DUMMY_COST)
-
-    for i, staff_member in enumerate(eligible_staff):
-        for j, session in enumerate(open_sessions):
-            overtime_penalty = max(
-                0, staff_member.hours_this_week + session.duration_hours
-                - staff_member.preferred_weekly_hours
-            )
-            preference_penalty = 0 if session.id in staff_member.preferred_sessions else 2
-            cost_matrix[i, j] = overtime_penalty + preference_penalty
-
-    return cost_matrix
-
-
-def solve_assignment(eligible_staff, open_sessions):
-    cost_matrix = build_cost_matrix(eligible_staff, open_sessions)
-    row_idx, col_idx = linear_sum_assignment(cost_matrix)
-
-    assignments = []
-    for r, c in zip(row_idx, col_idx):
-        if r < len(eligible_staff) and c < len(open_sessions):
-            assignments.append((eligible_staff[r], open_sessions[c]))
-
-    return assignments
-```
-
-The dummy-cost padding matters: `linear_sum_assignment` requires a square cost matrix, but we almost never have exactly as many eligible staff as open sessions. Padding with a high but finite cost (rather than infinity, which can produce numerical issues) lets the solver still find the best *possible* real assignment without being forced to fill every slot with a bad match.
-
-## Immutable versions and append-only audit logs
-
-The draft produced by the solver never overwrites the published schedule directly. It becomes a new version, requires supervisor approval, and only then is committed — and even then, nothing is ever updated in place.
-
-```python
-from sqlalchemy import select
-from sqlalchemy.exc import StaleDataError
-
-
-class ScheduleVersion(Base):
-    __tablename__ = "schedule_versions"
-
-    id = Column(Integer, primary_key=True)
-    schedule_id = Column(Integer, ForeignKey("schedules.id"), nullable=False)
-    version_number = Column(Integer, nullable=False)
-    content = Column(JSON, nullable=False)
-    approved_by = Column(Integer, ForeignKey("users.id"), nullable=True)
-    approved_at = Column(DateTime, nullable=True)
-    # optimistic concurrency token
-    version = Column(Integer, nullable=False, default=1)
-
-    __mapper_args__ = {"version_id_col": version}
-
-
-class AuditEvent(Base):
-    __tablename__ = "audit_events"
-    __table_args__ = (
-        # Append-only: no UPDATE or DELETE grants on this table at the DB
-        # role level, enforced outside the ORM as well as within it.
+def auto_assignable(candidate: Candidate) -> bool:
+    return eligible(candidate) and all(
+        outcome != "REVIEW" for outcome in candidate.outcomes
     )
 
-    id = Column(Integer, primary_key=True)
-    schedule_version_id = Column(Integer, ForeignKey("schedule_versions.id"))
-    event_type = Column(String, nullable=False)  # e.g. "draft_created", "approved"
-    actor_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    payload = Column(JSON, nullable=False)
-    created_at = Column(DateTime, nullable=False, server_default=func.now())
+def assignment_value(candidate: Candidate, coverage: float,
+                     tier_bonus: dict[int, float], score_unit: float) -> float:
+    return coverage + tier_bonus[candidate.tier] + candidate.score * score_unit
 
-
-def approve_schedule_version(session, version_id: int, supervisor_id: int):
-    version = session.get(ScheduleVersion, version_id)
-
-    try:
-        version.approved_by = supervisor_id
-        version.approved_at = datetime.utcnow()
-        session.flush()  # triggers SQLAlchemy's version_id_col check
-    except StaleDataError:
-        # Someone else modified this version concurrently — refuse the
-        # approval rather than silently clobbering their change.
-        session.rollback()
-        raise ConcurrentModificationError(
-            f"Schedule version {version_id} was modified by another "
-            "process. Re-fetch and retry."
-        )
-
-    session.add(AuditEvent(
-        schedule_version_id=version.id,
-        event_type="approved",
-        actor_id=supervisor_id,
-        payload={"version_number": version.version_number},
-    ))
-    session.commit()
+verified = Candidate(20, ("PASS", "PASS"), 2, 73.0)
+unknown = Candidate(30, ("PASS", "REVIEW"), 1, 99.0)
+assert auto_assignable(verified)
+assert not auto_assignable(unknown)
 ```
 
-Two things are doing the real work here:
+In the real flow, all mandatory rules are evaluated for each pair so the result can explain every failure. Candidates with a `FAIL` are excluded; candidates with `REVIEW` remain distinguishable in ranked output but are filtered out before auto-fill. This matters because a large score, a strong preference, or a desirable tier must not transform missing evidence into permission.
 
-1. **Optimistic concurrency** via SQLAlchemy's `version_id_col` means two supervisors can't both approve conflicting changes to the same draft without one of them getting a clear `ConcurrentModificationError` instead of a silently lost update.
-2. **Append-only audit events** mean the audit table has no legitimate `UPDATE` or `DELETE` path — enforced both at the ORM layer (no update methods exposed for `AuditEvent`) and at the database role level (the application's DB user has `INSERT`/`SELECT` grants only on that table). Every state transition — flag raised, candidate filtered with its reason, draft created, approved — is a new row, never a mutation, so reconstructing "what did the schedule look like on Tuesday, and who approved what" is always a query, never a guess.
+For the remaining edges, the scheduler turns each candidate into a value with three levels: coverage first, priority tier second, score third. The coverage term is configured to dominate the other terms, so leaving a job unmatched cannot win merely because the remaining assignments score better. Tier and score then decide among alternatives that preserve coverage.
 
-## Why this is worth the extra complexity
+The assignment helper below minimizes cost by negating allowed values. A `None` cell is a forbidden pairing. It adds one private zero-value dummy column per job, allowing any row to remain unmatched without forcing an invalid worker assignment.
 
-A simpler design — recompute and republish immediately, update rows in place, skip the `REVIEW` state — would be meaningfully less code. It would also be the kind of system where, the first time it does something an operator doesn't expect, nobody trusts its output again. For scheduling software specifically, the cost of an operator manually double-checking every automated change is high enough that it defeats the purpose of automating in the first place. The hard-constraint filter, the explicit `REVIEW` state, and the immutable audit trail exist specifically so that trust, once established, doesn't have a reason to erode.
+```python
+def _max_value_assignment(values: list[list[float | None]]) -> list[int | None]:
+    n = len(values)
+    if n == 0: return []
+    m, cols, big = len(values[0]), len(values[0]) + n, 1e12
+    cost = [[(-x if x is not None else big) for x in row] +
+            [0.0 if k == i else big for k in range(n)]
+            for i, row in enumerate(values)]
+    u, v = [0.0] * (n + 1), [0.0] * (cols + 1)
+    p, way = [0] * (cols + 1), [0] * (cols + 1)
+    for i in range(1, n + 1):
+        p[0], j0 = i, 0
+        minv, used = [float("inf")] * (cols + 1), [False] * (cols + 1)
+        while True:
+            used[j0] = True
+            i0, delta, j1 = p[j0], float("inf"), 0
+            for j in range(1, cols + 1):
+                if not used[j]:
+                    cur = cost[i0 - 1][j - 1] - u[i0] - v[j]
+                    if cur < minv[j]: minv[j], way[j] = cur, j0
+                    if minv[j] < delta: delta, j1 = minv[j], j
+            for j in range(cols + 1):
+                if used[j]: u[p[j]] += delta; v[j] -= delta
+                else: minv[j] -= delta
+            j0 = j1
+            if p[j0] == 0: break
+        while j0:
+            j1 = way[j0]
+            p[j0], j0 = p[j1], j1
+    result: list[int | None] = [None] * n
+    for j in range(1, cols + 1):
+        if p[j] and j <= m and cost[p[j] - 1][j - 1] < big:
+            result[p[j] - 1] = j - 1
+    return result
+```
+
+For the synthetic example, the value matrix is `[[10, 9], [10, None]]`. The returned columns are `[1, 0]`: job A gets worker 20 and job B gets worker 10. The dummy columns mean the same routine also handles a group where no eligible worker exists for one or more jobs.
+
+Determinism is part of the output contract, not an incidental property. Candidate workers are sorted by identifier before columns are built, jobs arrive in deterministic order, and the algorithm updates a predecessor only on a strictly lower cost. Identical inputs therefore produce the same matching, including when several assignments have equal value. That makes a draft explainable and repeatable without pretending the score is a probability.
+
+## Benchmarks and trade-offs
+
+The functional test demonstrates a narrow, exact comparison: the greedy choice covers 1 of 2 jobs; matching covers 2 of 2. That is 50% versus 100% coverage in this constructed case, not a measured success rate, production outcome, or performance benchmark. No latency or throughput benchmark has been run.
+
+The implementation documents Hungarian-algorithm complexity as **O(n²m)**, where *n* is the number of sessions and *m* is the number of columns, including dummy unmatched columns. That is a theoretical bound, not a timing result. The explicit cost matrix uses **O(nm)** space. For small overlap groups, paying that modeling and implementation cost buys a useful global guarantee: among the allowed pairings, the selected combination maximizes total value.
+
+The guarantee is deliberately bounded. Matching is per overlap group, not a multi-day workload optimizer. It does not account for travel, fairness across dates, or future schedule changes. The value coefficients also require care: coverage must dominate the possible sum of lower-level preferences, or the intended objective can silently change. A greedy strategy is simpler and may be sufficient when each job has an independent pool or when coverage is not the primary objective. Here, scarcity and overlapping eligibility make the global constraint worth modeling explicitly.
+
+## Engineering judgment
+
+Use one-to-one matching when decisions share scarce resources, hard eligibility is non-negotiable, and leaving eligible work uncovered has a clear cost. Keep qualification checks outside the objective, make uncertainty a visible non-automatic state, and make the objective’s ordering explicit in the value function. For independent choices, a stable ranked list is easier to explain and maintain. But once one choice can consume the only feasible option for another, local best-first assignment is not a simplification; it is an unspoken policy to accept avoidable uncovered work.
