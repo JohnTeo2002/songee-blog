@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 /* -----------------------------------------------------------------------
    Design tokens.
@@ -69,10 +70,6 @@ html[data-theme="dark"] body {
 ::selection {
   background: var(--color-signal);
   color: var(--color-paper);
-}
-
-a {
-  color: inherit;
 }
 
 /* Visible keyboard focus everywhere */
