@@ -55,7 +55,11 @@
       const wrapper = document.createElement("div");
       wrapper.className = "mermaid-wrap";
       block.replaceWith(wrapper);
-      sources.push({ wrapper, code: block.innerText });
+      const code = Array.from(
+        block.querySelectorAll<HTMLElement>(".ec-line"),
+        (line) => line.textContent ?? ""
+      ).join("\n");
+      sources.push({ wrapper, code });
     });
 
     await renderAll();
