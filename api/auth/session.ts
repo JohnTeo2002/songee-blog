@@ -5,7 +5,7 @@ import {
   isPublishingConfigured,
   isValidAdminSession,
   readCookie,
-} from "../../src/lib/admin-auth";
+} from "../../src/lib/admin-auth.js";
 
 export async function GET(request: Request): Promise<Response> {
   const configured = isAdminAuthConfigured() && isPublishingConfigured();

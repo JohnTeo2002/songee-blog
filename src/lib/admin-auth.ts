@@ -1,4 +1,4 @@
-import { SITE_URL } from "../consts";
+import { SITE_URL } from "../consts.js";
 
 export const ADMIN_SESSION_COOKIE = "admin_session";
 export const ADMIN_OAUTH_STATE_COOKIE = "admin_oauth_state";

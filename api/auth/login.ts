@@ -4,7 +4,7 @@ import {
   adminLogin,
   isAdminAuthConfigured,
   serializeCookie,
-} from "../../src/lib/admin-auth";
+} from "../../src/lib/admin-auth.js";
 
 export function GET(request: Request): Response {
   const login = adminLogin();

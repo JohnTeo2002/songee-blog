@@ -1,11 +1,11 @@
-import { BLOG_TAGS, type BlogTag } from "../src/consts";
+import { BLOG_TAGS, type BlogTag } from "../src/consts.js";
 import {
   ADMIN_SESSION_COOKIE,
   isPublishingConfigured,
   isValidAdminSession,
   readCookie,
   sameOrigin,
-} from "../src/lib/admin-auth";
+} from "../src/lib/admin-auth.js";
 
 const json = (data: unknown, status = 200) =>
   Response.json(data, {

@@ -9,7 +9,7 @@ import {
   isAdminAuthConfigured,
   readCookie,
   serializeCookie,
-} from "../../src/lib/admin-auth";
+} from "../../src/lib/admin-auth.js";
 
 function adminRedirect(error?: string): URL {
   const url = new URL("/admin", adminBaseUrl());
