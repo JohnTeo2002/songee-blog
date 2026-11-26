@@ -24,13 +24,6 @@ const projects: Project[] = [
       "A scheduling platform for clinical staff rosters that treats correctness as a hard requirement: deterministic hard-constraint filtering, Hungarian-algorithm bipartite optimization for assignment, server-side role-based access control, and an append-only audit log so every revision to a published schedule is attributable and reversible.",
   },
   {
-    name: "156.25 MHz FPGA NASDAQ ITCH 5.0 Market Data Decoder",
-    summary: "Sub-microsecond hardware packet parsing",
-    stack: ["SystemVerilog", "AXI4-Stream", "cocotb"],
-    blurb:
-      "A hardware network packet parser for NASDAQ's ITCH 5.0 market data feed that bypasses the OS kernel network stack entirely, decoding message types directly in fabric at 156.25 MHz over an AXI4-Stream interface to hit sub-microsecond latency. Verified with a cocotb testbench driving recorded market data against a bit-exact reference decoder.",
-  },
-  {
     name: "Multimodal Synthetic Media Verification Pipeline",
     summary: "Cross-modal classification with human-in-the-loop review",
     stack: ["PyTorch", "Cross-modal attention", "Risk routing"],
