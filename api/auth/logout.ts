@@ -2,7 +2,7 @@ import {
   ADMIN_SESSION_COOKIE,
   clearCookie,
   sameOrigin,
-} from "../../src/lib/admin-auth";
+} from "../../src/lib/admin-auth.js";
 
 export function POST(request: Request): Response {
   if (!sameOrigin(request)) {
